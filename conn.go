@@ -93,7 +93,8 @@ func (r *duckdbRows) Next(dst []driver.Value) error {
 		case C.DUCKDB_TYPE_DOUBLE:
 			dst[i] = (*[1 << 31]float64)(unsafe.Pointer(colData))[r.cursor]
 		case C.DUCKDB_TYPE_DATE:
-			val := (*[1 << 31]C.duckdb_date_struct)(unsafe.Pointer(colData))[r.cursor]
+			date := (*[1 << 31]C.duckdb_date)(unsafe.Pointer(colData))[r.cursor]
+			val := C.duckdb_from_date(date)
 			dst[i] = time.Date(
 				int(val.year),
 				time.Month(val.month),
@@ -104,7 +105,18 @@ func (r *duckdbRows) Next(dst []driver.Value) error {
 		case C.DUCKDB_TYPE_VARCHAR:
 			dst[i] = C.GoString((*[1 << 31]*C.char)(unsafe.Pointer(colData))[r.cursor])
 		case C.DUCKDB_TYPE_TIMESTAMP:
-			// TODO: Implement when availabe in DuckDB
+			ts := (*[1 << 31]C.duckdb_timestamp)(unsafe.Pointer(colData))[r.cursor]
+			val := C.duckdb_from_timestamp(ts)
+			dst[i] = time.Date(
+				int(val.date.year),
+				time.Month(val.date.month),
+				int(val.date.day),
+				int(val.time.hour),
+				int(val.time.min),
+				int(val.time.sec),
+				int(val.time.micros),
+				time.UTC,
+			)
 		}
 	}
 

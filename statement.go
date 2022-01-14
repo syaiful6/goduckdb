@@ -81,12 +81,16 @@ func (s *stmt) start(args []driver.Value) error {
 			}
 			continue
 		case bool:
-			if rv := C.duckdb_bind_boolean(*s.stmt, C.idx_t(i+1), true); rv == C.DuckDBError {
+			if rv := C.duckdb_bind_boolean(*s.stmt, C.idx_t(i+1), C.bool(v)); rv == C.DuckDBError {
 				return errCouldNotBind
 			}
 			continue
 		case time.Time:
-			// TODO
+			duckdbTimestamp := C.duckdb_timestamp{micros: C.int64_t(v.UnixMicro())}
+			if rv := C.duckdb_bind_timestamp(*s.stmt, C.idx_t(i+1), duckdbTimestamp); rv == C.DuckDBError {
+				return errCouldNotBind
+			}
+			continue
 		case string:
 			str := C.CString(v)
 			if rv := C.duckdb_bind_varchar(*s.stmt, C.idx_t(i+1), str); rv == C.DuckDBError {

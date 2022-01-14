@@ -67,6 +67,7 @@ func main() {
 
 	runTransaction()
 	testPreparedStmt()
+	testPurchase()
 }
 
 func check(args ...interface{}) {
@@ -128,4 +129,49 @@ func testPreparedStmt() {
 			u.name, u.age, u.height, u.bday.Format(time.RFC3339), u.awesome,
 		)
 	}
+}
+
+type purchase struct {
+	userId    int
+	total     float32
+	timestamp time.Time
+}
+
+func testPurchase() {
+	check(db.Exec("CREATE TABLE purchases(user_id INTEGER, total DOUBLE, timestamp TIMESTAMP)"))
+	check(db.Exec("INSERT INTO purchases VALUES(31, 9.9, '2021-09-20 11:39:00')"))
+	check(db.Exec("INSERT INTO purchases VALUES(99, 23.4, '2021-10-20 09:12:00')"))
+	check(db.Exec("INSERT INTO purchases VALUES(44, 19.2, '2021-11-20 08:19:00')"))
+	check(db.Exec("INSERT INTO purchases VALUES(45, 22.9, '2021-12-20 19:23:00')"))
+
+	now := time.Now().UTC()
+	t, _ := time.Parse(time.RFC3339, "2021-03-11T15:04:05+07:00")
+
+	stmt, err := db.Prepare("INSERT INTO purchases VALUES(?, ?, ?)")
+	check(err)
+	defer stmt.Close()
+
+	check(stmt.Exec(31, float32(12.8), now))
+	check(stmt.Exec(77, float32(12.8), t))
+
+	rows, err := db.Query(`
+		SELECT user_id, total, timestamp
+		FROM purchases 
+		WHERE total > ?`,
+		float32(10.0),
+	)
+	check(err)
+	defer rows.Close()
+
+	for rows.Next() {
+		p := new(purchase)
+		err := rows.Scan(&p.userId, &p.total, &p.timestamp)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf(
+			"%d user purchased %f at %v", p.userId, p.total, p.timestamp,
+		)
+	}
+	check(rows.Err())
 }
