@@ -25,7 +25,7 @@ func main() {
 	// db, err := sql.Open("duckdb", "foobar.db")
 
 	var err error
-	db, err = sql.Open("duckdb", "")
+	db, err = sql.Open("duckdb", "duckdb.db")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -68,6 +68,7 @@ func main() {
 	runTransaction()
 	testPreparedStmt()
 	testPurchase()
+	openWithReadOnly()
 }
 
 func check(args ...interface{}) {
@@ -140,9 +141,12 @@ type purchase struct {
 func testPurchase() {
 	check(db.Exec("CREATE TABLE purchases(user_id INTEGER, total DOUBLE, timestamp TIMESTAMP)"))
 	check(db.Exec("INSERT INTO purchases VALUES(31, 9.9, '2021-09-20 11:39:00')"))
+	check(db.Exec("INSERT INTO purchases VALUES(31, 19.2, '2021-09-20 11:39:00')"))
 	check(db.Exec("INSERT INTO purchases VALUES(99, 23.4, '2021-10-20 09:12:00')"))
+	check(db.Exec("INSERT INTO purchases VALUES(99, 11.4, '2021-08-20 09:12:00')"))
 	check(db.Exec("INSERT INTO purchases VALUES(44, 19.2, '2021-11-20 08:19:00')"))
 	check(db.Exec("INSERT INTO purchases VALUES(45, 22.9, '2021-12-20 19:23:00')"))
+	check(db.Exec("INSERT INTO purchases VALUES(45, 23.4, '2021-11-20 19:23:00')"))
 
 	now := time.Now().UTC()
 	t, _ := time.Parse(time.RFC3339, "2021-03-11T15:04:05+07:00")
@@ -174,4 +178,42 @@ func testPurchase() {
 		)
 	}
 	check(rows.Err())
+}
+
+type purchaseAggregate struct {
+	userId        int
+	average_total float32
+}
+
+func openWithReadOnly() {
+	rdb, err := sql.Open("duckdb", "duckdb.db?access_mode=READ_ONLY")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer rdb.Close()
+
+	check(rdb.Ping())
+
+	rows, err := rdb.Query(
+		`SELECT user_id, avg(total) as average_total FROM purchases WHERE year(timestamp) = ? GROUP BY user_id`,
+		2021,
+	)
+	check(err)
+	defer rows.Close()
+	for rows.Next() {
+		p := new(purchaseAggregate)
+		err := rows.Scan(&p.userId, &p.average_total)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf(
+			"average purchase %d is %f", p.userId, p.average_total,
+		)
+	}
+
+	if _, err = rdb.Exec("INSERT INTO purchases VALUES(31, 9.9, '2021-09-20 11:39:00')"); err != nil {
+		log.Printf(
+			"write query expected to fail with read only connection: %v", err,
+		)
+	}
 }
